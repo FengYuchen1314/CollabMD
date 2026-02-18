@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "30051:30052"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=30052
+      - JWT_SECRET=change-this-secret-in-production
+    restart: unless-stopped

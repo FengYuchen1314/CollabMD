@@ -1,0 +1,48 @@
+.editor-panel {
+  flex: 1;
+  overflow: auto;
+  height: 100%;
+}
+
+.editor-panel .cm-editor {
+  height: 100%;
+}
+
+.editor-panel .cm-scroller {
+  overflow: auto;
+}
+
+.editor-panel .cm-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+}
+
+.editor-panel .cm-line {
+  white-space: pre-wrap;
+}
+
+.editor-panel .cm-content > .cm-line {
+  display: block;
+}
+
+.preview.markdown-body {
+  white-space: normal;
+  word-wrap: break-word;
+}
+
+.preview.markdown-body p {
+  white-space: pre-wrap;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
