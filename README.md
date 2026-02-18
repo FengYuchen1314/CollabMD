@@ -173,3 +173,9 @@ MIT License
 ## 联系信息
 
 如有问题或建议，请提交 Issue 或联系维护者。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE) 开源许可证。有关详细信息，请参阅 [LICENSE](LICENSE) 文件。
+
+Copyright (c) 2026 FengYuchen
