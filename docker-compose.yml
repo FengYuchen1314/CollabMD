@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build:
@@ -9,6 +7,7 @@ services:
       - "30051:30052"
     volumes:
       - ./data:/app/data
+      - ./backend/data:/app/backend/data
     environment:
       - PORT=30052
       - JWT_SECRET=change-this-secret-in-production
