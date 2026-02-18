@@ -7,10 +7,9 @@ pnpm-debug.log*
 package-lock.json
 
 # Runtime data
-data/
 backend/data/images/*
 !backend/data/images/.gitkeep
-!data/.gitkeep
+data/*
 
 # Local config files
 config.local.json
