@@ -272,7 +272,7 @@ export default function Editor() {
         parent: editorRef.current
       })
 
-      editorScrollRef.current = editorRef.current
+      editorScrollRef.current = viewRef.current.scrollDOM
       if (editorScrollRef.current) {
         editorScrollRef.current.addEventListener('scroll', handleEditorScroll)
       }
