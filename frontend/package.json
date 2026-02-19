@@ -9,7 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.2",
     "@codemirror/lang-markdown": "^6.2.3",
+    "@codemirror/language": "^6.12.1",
+    "@codemirror/language-data": "^6.5.2",
     "@codemirror/state": "^6.4.0",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.23.0",

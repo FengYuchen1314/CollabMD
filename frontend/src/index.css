@@ -32,16 +32,23 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   color: var(--text);
   line-height: 1.6;
-  min-height: 100vh;
+  min-height: 100%;
+  height: 100%;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
 }
 
 .container {
@@ -493,6 +500,7 @@ select {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
 }
 
 .cm-editor {
@@ -512,6 +520,7 @@ select {
   border-left: 1px solid var(--border);
   white-space: normal;
   word-wrap: break-word;
+  min-height: 0;
 }
 
 .preview::-webkit-scrollbar {

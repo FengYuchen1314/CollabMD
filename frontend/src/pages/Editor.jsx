@@ -4,9 +4,12 @@ import { useAuth } from '../App'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { EditorView, basicSetup } from 'codemirror'
+import { keymap } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { markdown } from '@codemirror/lang-markdown'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { defaultKeymap, indentWithTab } from '@codemirror/commands'
 import { yCollab } from 'y-codemirror.next'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
@@ -30,6 +33,10 @@ export default function Editor() {
   const [description, setDescription] = useState('')
   const [content, setContent] = useState('')
   const [viewMode, setViewMode] = useState('split')
+  const [viewModeMenuOpen, setViewModeMenuOpen] = useState(false)
+  const [imageMenuOpen, setImageMenuOpen] = useState(false)
+  const [imageUrlInput, setImageUrlInput] = useState('')
+  const [showImageUrlModal, setShowImageUrlModal] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [permission, setPermission] = useState('private')
   const [canEdit, setCanEdit] = useState(true)
@@ -56,6 +63,64 @@ export default function Editor() {
   const providerRef = useRef(null)
   const contentRef = useRef('')
   const isScrolling = useRef(false)
+
+  const insertMarkdown = (before, after = '', defaultText = '') => {
+    const view = viewRef.current
+    if (!view || !canEdit) return
+
+    const { from, to } = view.state.selection.main
+    const selectedText = view.state.sliceDoc(from, to) || defaultText
+
+    view.dispatch({
+      changes: { from, to, insert: before + selectedText + after },
+      selection: { anchor: from + before.length, head: from + before.length + selectedText.length }
+    })
+    view.focus()
+  }
+
+  const insertLink = () => {
+    const view = viewRef.current
+    if (!view || !canEdit) return
+
+    const { from, to } = view.state.selection.main
+    const selectedText = view.state.sliceDoc(from, to) || '链接文字'
+
+    view.dispatch({
+      changes: { from, to, insert: `[${selectedText}](url)` },
+      selection: { anchor: from + selectedText.length + 3, head: from + selectedText.length + 6 }
+    })
+    view.focus()
+  }
+
+  const insertImageFromUrl = () => {
+    if (!imageUrlInput.trim()) return
+    const view = viewRef.current
+    if (!view || !canEdit) return
+
+    const { from, to } = view.state.selection.main
+    const selectedText = view.state.sliceDoc(from, to) || '图片'
+
+    view.dispatch({
+      changes: { from, to, insert: `![${selectedText}](${imageUrlInput.trim()})` }
+    })
+    view.focus()
+    setImageUrlInput('')
+    setShowImageUrlModal(false)
+  }
+
+  const insertList = (ordered = false) => {
+    const view = viewRef.current
+    if (!view || !canEdit) return
+
+    const { from } = view.state.selection.main
+    const line = view.state.doc.lineAt(from)
+    const prefix = ordered ? '1. ' : '- '
+
+    view.dispatch({
+      changes: { from: line.from, to: line.from, insert: prefix }
+    })
+    view.focus()
+  }
 
   useEffect(() => {
     const fetchDoc = async () => {
@@ -237,9 +302,22 @@ export default function Editor() {
     const handleEditorScroll = (event) => {
       if (isScrolling.current || !previewRef.current || viewMode !== 'split') return
       isScrolling.current = true
-      const scrollPercent = event.target.scrollTop / (event.target.scrollHeight - event.target.clientHeight)
-      const previewScrollHeight = previewRef.current.scrollHeight - previewRef.current.clientHeight
-      previewRef.current.scrollTop = scrollPercent * previewScrollHeight
+      
+      const editor = event.target
+      const preview = previewRef.current
+      const maxEditorScroll = editor.scrollHeight - editor.clientHeight
+      const maxPreviewScroll = preview.scrollHeight - preview.clientHeight
+      
+      if (maxEditorScroll <= 0 || maxPreviewScroll <= 0) {
+        isScrolling.current = false
+        return
+      }
+      
+      const scrollRatio = editor.scrollTop / maxEditorScroll
+      const targetPreviewScroll = scrollRatio * maxPreviewScroll
+      
+      preview.scrollTop = targetPreviewScroll
+      
       setTimeout(() => { isScrolling.current = false }, 50)
     }
 
@@ -250,7 +328,11 @@ export default function Editor() {
         doc: ytext.toString(),
         extensions: [
           basicSetup,
-          markdown(),
+          keymap.of([indentWithTab, ...defaultKeymap]),
+          markdown({
+            base: markdownLanguage,
+            codeLanguages: languages
+          }),
           oneDark,
           yCollab(ytext, provider.awareness),
           EditorView.updateListener.of((update) => {
@@ -531,6 +613,12 @@ export default function Editor() {
     <div className="editor-container">
       {sidebarVisible && (
         <div className="editor-sidebar">
+        <div style={{ marginBottom: '20px' }}>
+          <Link to="/" className="btn btn-secondary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            返回首页
+          </Link>
+        </div>
         <div className="form-group" style={{ marginBottom: '20px' }}>
           <label style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', display: 'block', fontWeight: 600 }}>文章名称</label>
           <input
@@ -657,29 +745,231 @@ export default function Editor() {
               </svg>
               {sidebarVisible ? '隐藏侧栏' : '显示侧栏'}
             </button>
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => setViewModeMenuOpen(!viewModeMenuOpen)}
+                disabled={uploadingImage}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {viewMode === 'edit' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.z"/></svg>}
+                {viewMode === 'split' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>}
+                {viewMode === 'preview' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+                {viewMode === 'edit' ? '编辑' : viewMode === 'split' ? '双栏' : '预览'}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {viewModeMenuOpen && (
+                <div style={{ 
+                  position: 'absolute', 
+                  top: '100%', 
+                  left: 0, 
+                  marginTop: '4px', 
+                  background: 'white', 
+                  border: '1px solid #e2e8f0', 
+                  borderRadius: '8px', 
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  zIndex: 1000,
+                  minWidth: '120px'
+                }}>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => { setViewMode('edit'); setViewModeMenuOpen(false); }}
+                    disabled={uploadingImage}
+                    style={{ width: '100%', justifyContent: 'flex-start', borderRadius: '8px 8px 0 0', border: 'none', background: viewMode === 'edit' ? undefined : 'transparent', color: viewMode === 'edit' ? undefined : '#374151' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.z"/></svg>
+                    编辑
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => { setViewMode('split'); setViewModeMenuOpen(false); }}
+                    disabled={uploadingImage}
+                    style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: viewMode === 'split' ? undefined : 'transparent', color: viewMode === 'split' ? undefined : '#374151' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                    双栏
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => { setViewMode('preview'); setViewModeMenuOpen(false); }}
+                    disabled={uploadingImage}
+                    style={{ width: '100%', justifyContent: 'flex-start', borderRadius: '0 0 8px 8px', border: 'none', background: viewMode === 'preview' ? undefined : 'transparent', color: viewMode === 'preview' ? undefined : '#374151' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    预览
+                  </button>
+                </div>
+              )}
+            </div>
+            <div style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 8px' }} />
             <button 
-              className={`btn ${viewMode === 'edit' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('edit')}
-              disabled={uploadingImage}
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('**', '**', '粗体')}
+              disabled={!canEdit || uploadingImage}
+              title="加粗 (Ctrl+B)"
+              style={{ padding: '8px' }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.z"/></svg>
-              编辑
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
             </button>
             <button 
-              className={`btn ${viewMode === 'split' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('split')}
-              disabled={uploadingImage}
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('*', '*', '斜体')}
+              disabled={!canEdit || uploadingImage}
+              title="斜体 (Ctrl+I)"
+              style={{ padding: '8px' }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
-              双栏
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
             </button>
             <button 
-              className={`btn ${viewMode === 'preview' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('preview')}
-              disabled={uploadingImage}
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('~~', '~~', '删除线')}
+              disabled={!canEdit || uploadingImage}
+              title="删除线"
+              style={{ padding: '8px' }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              预览
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.3 4.9c-2.3-.6-4.4-1-6.2-.9-2.7 0-5.3.7-5.3 3.6 0 1.5 1.8 3.3 3.6 3.9h.2"/><path d="M4 12h16"/><path d="M6.7 19.1c2.3.6 4.4 1 6.2.9 2.7 0 5.3-.7 5.3-3.6 0-1.5-1.8-3.3-3.6-3.9h-.2"/></svg>
+            </button>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('`', '`', '行内代码')}
+              disabled={!canEdit || uploadingImage}
+              title="行内代码"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </button>
+            <div style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 8px' }} />
+            <button 
+              className="btn btn-secondary"
+              onClick={insertLink}
+              disabled={!canEdit || uploadingImage}
+              title="插入链接"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </button>
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => setImageMenuOpen(!imageMenuOpen)}
+                disabled={!canEdit || uploadingImage}
+                title="插入图片"
+                style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {imageMenuOpen && (
+                <div style={{ 
+                  position: 'absolute', 
+                  top: '100%', 
+                  left: 0, 
+                  marginTop: '4px', 
+                  background: 'white', 
+                  border: '1px solid #e2e8f0', 
+                  borderRadius: '8px', 
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  zIndex: 1000,
+                  minWidth: '150px'
+                }}>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => { setShowImageUrlModal(true); setImageMenuOpen(false); }}
+                    disabled={uploadingImage}
+                    style={{ width: '100%', justifyContent: 'flex-start', borderRadius: '8px 8px 0 0', border: 'none', background: 'transparent', color: '#374151' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '8px' }}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    插入网络图片
+                  </button>
+                  <label 
+                    style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '10px 12px', cursor: 'pointer', borderRadius: '0 0 8px 8px', border: 'none', background: 'transparent', color: '#374151', fontSize: '14px' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '8px' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    从本地上传
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        setImageMenuOpen(false)
+                        setUploadingImage(true)
+                        const formData = new FormData()
+                        formData.append('image', file)
+                        try {
+                          const token = localStorage.getItem('token')
+                          const res = await fetch('/api/upload', {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                            body: formData
+                          })
+                          const data = await res.json()
+                          if (!res.ok) throw new Error(data.error || '图片上传失败')
+                          if (data.url) {
+                            const imageMarkdown = `\n![image](${data.url})\n`
+                            const pos = viewRef.current?.state.doc.length || 0
+                            viewRef.current?.dispatch({
+                              changes: { from: pos, insert: imageMarkdown }
+                            })
+                          }
+                        } catch (err) {
+                          console.error('Failed to upload image:', err)
+                          alert(err.message)
+                        } finally {
+                          setUploadingImage(false)
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+            <div style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 8px' }} />
+            <button 
+              className="btn btn-secondary"
+              onClick={() => insertList(false)}
+              disabled={!canEdit || uploadingImage}
+              title="无序列表"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => insertList(true)}
+              disabled={!canEdit || uploadingImage}
+              title="有序列表"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+            </button>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('\n```\n', '\n```\n', '代码块')}
+              disabled={!canEdit || uploadingImage}
+              title="代码块"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8l4 4-4 4"/><line x1="13" y1="16" x2="17" y2="16"/></svg>
+            </button>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('\n> ', '\n', '引用')}
+              disabled={!canEdit || uploadingImage}
+              title="引用"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/></svg>
+            </button>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => insertMarkdown('\n---\n', '', '')}
+              disabled={!canEdit || uploadingImage}
+              title="水平线"
+              style={{ padding: '8px' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
           </div>
           {uploadingImage ? (
@@ -720,15 +1010,6 @@ export default function Editor() {
                 图片上传中...
               </div>
             )}
-            <button 
-              className="btn btn-secondary" 
-              onClick={() => navigator.clipboard.writeText(content)}
-              disabled={uploadingImage}
-              style={{ fontSize: '13px' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              复制内容
-            </button>
           </div>
         </div>
         <div className="editor-wrapper">
@@ -742,11 +1023,24 @@ export default function Editor() {
               onScroll={(e) => {
                 if (viewMode !== 'split' || isScrolling.current) return
                 isScrolling.current = true
-                const scrollPercent = e.target.scrollTop / (e.target.scrollHeight - e.target.clientHeight)
-                if (editorScrollRef.current) {
-                  const editorScrollHeight = editorScrollRef.current.scrollHeight - editorScrollRef.current.clientHeight
-                  editorScrollRef.current.scrollTop = scrollPercent * editorScrollHeight
+                
+                const preview = e.target
+                const editor = editorScrollRef.current
+                const maxPreviewScroll = preview.scrollHeight - preview.clientHeight
+                const maxEditorScroll = editor ? editor.scrollHeight - editor.clientHeight : 0
+                
+                if (maxPreviewScroll <= 0 || maxEditorScroll <= 0) {
+                  isScrolling.current = false
+                  return
                 }
+                
+                const scrollRatio = preview.scrollTop / maxPreviewScroll
+                const targetEditorScroll = scrollRatio * maxEditorScroll
+                
+                if (editor) {
+                  editor.scrollTop = targetEditorScroll
+                }
+                
                 setTimeout(() => { isScrolling.current = false }, 50)
               }}
             >
@@ -806,6 +1100,28 @@ export default function Editor() {
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowInviteModal(false)}>取消</button>
               <button className="btn btn-primary" onClick={handleInvite}>邀请</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImageUrlModal && (
+        <div className="modal-overlay" onClick={() => setShowImageUrlModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>插入网络图片</h2>
+            <div className="form-group">
+              <input
+                type="text"
+                placeholder="输入图片链接"
+                value={imageUrlInput}
+                onChange={e => setImageUrlInput(e.target.value)}
+                autoFocus
+                onKeyDown={e => e.key === 'Enter' && insertImageFromUrl()}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowImageUrlModal(false)}>取消</button>
+              <button className="btn btn-primary" onClick={insertImageFromUrl}>插入</button>
             </div>
           </div>
         </div>
