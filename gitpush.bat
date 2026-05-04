@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul
+setlocal EnableDelayedExpansion
+
 echo.
 echo 🚀 开始 Git 提交流程...
 echo.
@@ -35,3 +37,4 @@ if %errorlevel% == 1 (
 
 echo.
 pause
+endlocal
